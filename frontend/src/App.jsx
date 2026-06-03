@@ -10,6 +10,8 @@ export default function App() {
   const [uploading, setUploading] = useState(false)
   const [uploadCount, setUploadCount] = useState(0)
   const [cardHovered, setCardHovered] = useState(false)
+  const [processedUrl, setProcessedUrl] = useState(null)
+  const [docId, setDocId] = useState(null)
 
   const onDrop = useCallback((acceptedFiles) => {
     const f = acceptedFiles[0]
@@ -38,11 +40,17 @@ export default function App() {
       })
       const data = await response.json()
       if (response.ok) {
-        toast.success(`Uploaded: ${data.filename}`)
-        setUploadCount(c => c + 1)
+          toast.success(`Uploaded: ${data.filename}`)
+          setUploadCount(c => c + 1)
+          setDocId(data.id)
+
+          // fetch processed image immediately after upload
+          const processedRes = await fetch(`http://localhost:8000/processed/${data.id}`)
+          const blob = await processedRes.blob()
+          setProcessedUrl(URL.createObjectURL(blob))
       } else {
-        toast.error("Upload failed")
-      }
+          toast.error("Upload failed")
+            }
     } catch {
       toast.error("Cannot reach server")
     } finally {
@@ -140,13 +148,21 @@ export default function App() {
 
         {preview ? (
           <>
-            <div style={s.previewRow}>
-              <img src={preview} alt="preview" style={s.thumb} />
-              <div style={s.fileInfo}>
-                <div style={s.fileName}>{fileName}</div>
-                <div style={s.fileMeta}>{fileSize} · Image</div>
+            <div style={s.imageRow}>
+              <div style={s.imageBox}>
+                <span style={s.imageLabel}>Original</span>
+                <img src={preview} alt="original" style={s.thumb} />
               </div>
-              <div style={s.check}>✓</div>
+              {processedUrl && (
+                <div style={s.imageBox}>
+                  <span style={s.imageLabel}>Processed</span>
+                  <img src={processedUrl} alt="processed" style={s.thumb} />
+                </div>
+              )}
+            </div>
+            <div style={s.fileInfo}>
+              <div style={s.fileName}>{fileName}</div>
+              <div style={s.fileMeta}>{fileSize} · Image</div>
             </div>
             <button
               className="upload-btn"
@@ -185,7 +201,7 @@ const s = {
     display: "flex",
     flexDirection: "column",
     alignItems: "center",
-    padding: "48px 24px",
+    padding: "48px 0",
     fontFamily: "system-ui, sans-serif",
     position: "relative",
     overflow: "hidden",
@@ -228,8 +244,10 @@ const s = {
   card: {
     background: "rgba(255,255,255,0.04)",
     border: "1px solid rgba(255,255,255,0.08)",
-    borderRadius: 20, padding: 28,
-    width: "100%", maxWidth: 480,
+    borderRadius: 20, padding: 32,
+    width: "calc(100% - 80px)",
+    maxWidth: 900,
+    margin: "0 auto",
     backdropFilter: "blur(20px)",
     zIndex: 1,
   },
@@ -258,13 +276,27 @@ const s = {
     fontSize: 10, padding: "2px 8px", borderRadius: 6,
   },
   divider: { height: 1, background: "rgba(255,255,255,0.06)", margin: "20px 0" },
-  previewRow: { display: "flex", alignItems: "center", gap: 12, marginBottom: 16 },
-  thumb: {
-    width: 52, height: 52, borderRadius: 10,
-    objectFit: "cover",
-    border: "1px solid rgba(99,102,241,0.3)", flexShrink: 0,
+  imageRow: {
+    display: "flex", gap: 24,
+    marginBottom: 20, justifyContent: "center",
+    alignItems: "flex-start",
   },
-  fileInfo: { flex: 1, minWidth: 0 },
+  imageBox: {
+    flex: 1, display: "flex",
+    flexDirection: "column", alignItems: "center", gap: 8,
+  },
+  imageLabel: {
+    color: "rgba(255,255,255,0.5)",
+    fontSize: "0.75rem", fontWeight: 500,
+    letterSpacing: "0.05em", textTransform: "uppercase",
+  },
+  thumb: {
+    width: "100%", maxWidth: 380,
+    height: 260, borderRadius: 12,
+    objectFit: "cover",
+    border: "1px solid rgba(99,102,241,0.3)",
+  },
+  fileInfo: { flex: 1, minWidth: 0, textAlign: "center", marginBottom: 12 },
   fileName: {
     color: "rgba(255,255,255,0.85)", fontSize: "0.85rem",
     fontWeight: 500, whiteSpace: "nowrap",

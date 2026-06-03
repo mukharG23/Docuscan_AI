@@ -3,6 +3,7 @@ backend/venv/
 backend/__pycache__/
 backend/*.db
 backend/uploads/
+backend/processed/
 
 # Node
 frontend/node_modules/
@@ -11,3 +12,4 @@ frontend/dist/
 # General
 .DS_Store
 *.pyc
+.env

@@ -1,7 +1,9 @@
 import os
 import uuid
-from fastapi import FastAPI, File, UploadFile, Depends
+from fastapi import FastAPI, File, UploadFile, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
+from fastapi.responses import FileResponse
+from image_processor import preprocess_image
 from sqlalchemy.orm import Session
 from database import engine, get_db, Base
 from models import Document
@@ -19,6 +21,9 @@ app.add_middleware(
 
 UPLOAD_DIR = "uploads"
 os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+PROCESSED_DIR = "processed"
+os.makedirs(PROCESSED_DIR, exist_ok=True)
 
 @app.get("/")
 def root():
@@ -50,3 +55,16 @@ async def upload_document(
         "filename": doc.filename,
         "message": "File uploaded successfully"
     }
+
+@app.get("/processed/{doc_id}")
+def get_processed_image(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    processed_path = os.path.join(PROCESSED_DIR, "processed_" + os.path.basename(doc.filepath))
+
+    if not os.path.exists(processed_path):
+        preprocess_image(doc.filepath, processed_path)
+
+    return FileResponse(processed_path, media_type="image/png")
