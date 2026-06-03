@@ -14,9 +14,14 @@ def deskew(gray):
     deskewed = cv2.warpAffine(gray, matrix, (w, h), flags=cv2.INTER_CUBIC, borderValue=255)
     return deskewed
 
+def binarize(gray):
+    _, binary = cv2.threshold(gray, 0, 255, cv2.THRESH_BINARY + cv2.THRESH_OTSU)
+    return binary
+
 def preprocess_image(input_path: str, output_path: str) -> str:
     img = cv2.imread(input_path)
     gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
     deskewed = deskew(gray)
-    cv2.imwrite(output_path, deskewed)
+    binarized = binarize(deskewed)
+    cv2.imwrite(output_path, binarized)
     return output_path
