@@ -1,12 +1,14 @@
 import os
 import uuid
+import json
 from fastapi import FastAPI, File, UploadFile, Depends, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import FileResponse
 from image_processor import processor 
 from sqlalchemy.orm import Session
 from database import engine, get_db, Base
-from models import Document
+from models import Document,Extraction
+
 
 Base.metadata.create_all(bind=engine)
 
@@ -77,3 +79,23 @@ def extract_document(doc_id: int, db: Session = Depends(get_db)):
 
     raw_text = processor.extract_text(doc.filepath)
     return {"doc_id": doc_id, "raw_text": raw_text}
+
+@app.post("/structure/{doc_id}")
+def structure_document(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+
+    raw_text = processor.extract_text(doc.filepath)
+    structured = processor.structure_text(raw_text)
+
+    extraction = Extraction(
+        doc_id=doc_id,
+        raw_text=raw_text,
+        structured_data=json.dumps(structured)
+    )
+    db.add(extraction)
+    db.commit()
+    db.refresh(extraction)
+
+    return {"doc_id": doc_id, "structured_data": structured}

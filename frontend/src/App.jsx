@@ -12,6 +12,9 @@ export default function App() {
   const [cardHovered, setCardHovered] = useState(false)
   const [processedUrl, setProcessedUrl] = useState(null)
   const [docId, setDocId] = useState(null)
+  const [extracting, setExtracting] = useState(false)
+  const [formData, setFormData] = useState(null)
+  const [extractCount, setExtractCount] = useState(0)
 
   const onDrop = useCallback((acceptedFiles) => {
     const f = acceptedFiles[0]
@@ -20,6 +23,9 @@ export default function App() {
     setFileName(f.name)
     setFileSize((f.size / 1024 / 1024).toFixed(2) + " MB")
     setPreview(URL.createObjectURL(f))
+    setProcessedUrl(null)
+    setFormData(null)
+    setDocId(null)
   }, [])
 
   const { getRootProps, getInputProps, isDragActive } = useDropzone({
@@ -40,23 +46,53 @@ export default function App() {
       })
       const data = await response.json()
       if (response.ok) {
-          toast.success(`Uploaded: ${data.filename}`)
-          setUploadCount(c => c + 1)
-          setDocId(data.id)
-
-          // fetch processed image immediately after upload
-          const processedRes = await fetch(`http://localhost:8000/processed/${data.id}`)
-          const blob = await processedRes.blob()
-          setProcessedUrl(URL.createObjectURL(blob))
+        toast.success(`Uploaded: ${data.filename}`)
+        setUploadCount(c => c + 1)
+        setDocId(data.id)
+        const processedRes = await fetch(`http://localhost:8000/processed/${data.id}`)
+        const blob = await processedRes.blob()
+        setProcessedUrl(URL.createObjectURL(blob))
       } else {
-          toast.error("Upload failed")
-            }
+        toast.error("Upload failed")
+      }
     } catch {
       toast.error("Cannot reach server")
     } finally {
       setUploading(false)
     }
   }
+
+  const handleExtract = async () => {
+    if (!docId) return
+    setExtracting(true)
+    try {
+      const res = await fetch(`http://localhost:8000/structure/${docId}`, { method: "POST" })
+      const data = await res.json()
+      if (res.ok) {
+        setFormData(data.structured_data)
+        setExtractCount(c => c + 1)
+        toast.success("Document structured!")
+      } else {
+        toast.error("Extraction failed")
+      }
+    } catch {
+      toast.error("Cannot reach server")
+    } finally {
+      setExtracting(false)
+    }
+  }
+
+  const handleFieldChange = (key, value) => {
+    setFormData(prev => ({ ...prev, [key]: value }))
+  }
+
+  const handleConfirm = () => {
+    console.log("Confirmed data:", formData)
+    toast.success("Data confirmed!")
+  }
+
+  const formatLabel = (key) =>
+    key.replace(/_/g, " ").replace(/\b\w/g, c => c.toUpperCase())
 
   return (
     <div style={s.page}>
@@ -92,6 +128,13 @@ export default function App() {
         .dropzone-inner:hover {
           border-color: rgba(99,102,241,0.7) !important;
           background: rgba(99,102,241,0.08) !important;
+        }
+        .form-input {
+          transition: border-color 0.2s;
+        }
+        .form-input:focus {
+          outline: none;
+          border-color: rgba(99,102,241,0.7) !important;
         }
       `}</style>
 
@@ -172,6 +215,49 @@ export default function App() {
             >
               {uploading ? "Uploading..." : "Upload Document"}
             </button>
+
+            {docId && !formData && (
+              <button
+                className="upload-btn"
+                onClick={handleExtract}
+                disabled={extracting}
+                style={{ ...s.btn, marginTop: 10, background: "linear-gradient(135deg, #0ea5e9, #6366f1)", opacity: extracting ? 0.7 : 1 }}
+              >
+                {extracting ? "Extracting..." : "Extract & Structure"}
+              </button>
+            )}
+
+            {formData && (
+              <>
+                <div style={s.divider} />
+                <div style={s.formHeader}>
+                  <span style={s.formTitle}>Extracted Data</span>
+                  <span style={s.docType}>{formData.document_type?.replace(/_/g, " ")}</span>
+                </div>
+                <div style={s.formGrid}>
+                  {Object.entries(formData)
+                    .filter(([key]) => key !== "document_type")
+                    .map(([key, value]) => (
+                      <div key={key} style={s.fieldGroup}>
+                        <label style={s.fieldLabel}>{formatLabel(key)}</label>
+                        <input
+                          className="form-input"
+                          style={s.fieldInput}
+                          value={value ?? ""}
+                          onChange={e => handleFieldChange(key, e.target.value)}
+                        />
+                      </div>
+                    ))}
+                </div>
+                <button
+                  className="upload-btn"
+                  onClick={handleConfirm}
+                  style={{ ...s.btn, marginTop: 16, background: "linear-gradient(135deg, #10b981, #059669)" }}
+                >
+                  Confirm & Submit
+                </button>
+              </>
+            )}
           </>
         ) : (
           <p style={s.emptyHint}>No file selected yet</p>
@@ -180,8 +266,8 @@ export default function App() {
         <div style={s.stats}>
           {[
             { val: uploadCount, label: "Uploaded" },
-            { val: 0, label: "Processed" },
-            { val: 0, label: "Extracted" },
+            { val: uploadCount, label: "Processed" },
+            { val: extractCount, label: "Extracted" },
           ].map(({ val, label }) => (
             <div key={label} style={s.stat}>
               <div style={s.statVal}>{val}</div>
@@ -303,12 +389,6 @@ const s = {
     overflow: "hidden", textOverflow: "ellipsis",
   },
   fileMeta: { color: "rgba(255,255,255,0.3)", fontSize: "0.75rem", marginTop: 2 },
-  check: {
-    width: 22, height: 22,
-    background: "rgba(16,185,129,0.2)", borderRadius: "50%",
-    display: "flex", alignItems: "center", justifyContent: "center",
-    color: "#10b981", fontSize: 12, flexShrink: 0,
-  },
   emptyHint: {
     color: "rgba(255,255,255,0.2)",
     fontSize: "0.8rem", textAlign: "center",
@@ -319,6 +399,41 @@ const s = {
     color: "#fff", border: "none", borderRadius: 12,
     fontSize: "0.9rem", fontWeight: 600,
     cursor: "pointer", letterSpacing: "0.01em",
+  },
+  formHeader: {
+    display: "flex", justifyContent: "space-between",
+    alignItems: "center", marginBottom: 16,
+  },
+  formTitle: {
+    color: "rgba(255,255,255,0.8)",
+    fontSize: "0.85rem", fontWeight: 600,
+    textTransform: "uppercase", letterSpacing: "0.05em",
+  },
+  docType: {
+    background: "rgba(99,102,241,0.15)",
+    border: "1px solid rgba(99,102,241,0.3)",
+    color: "#a5b4fc", fontSize: 11,
+    padding: "3px 10px", borderRadius: 20,
+    textTransform: "capitalize",
+  },
+  formGrid: {
+    display: "grid",
+    gridTemplateColumns: "1fr 1fr",
+    gap: 12,
+  },
+  fieldGroup: {
+    display: "flex", flexDirection: "column", gap: 4,
+  },
+  fieldLabel: {
+    color: "rgba(255,255,255,0.4)",
+    fontSize: "0.7rem", fontWeight: 500,
+    textTransform: "uppercase", letterSpacing: "0.05em",
+  },
+  fieldInput: {
+    background: "rgba(255,255,255,0.05)",
+    border: "1px solid rgba(255,255,255,0.1)",
+    borderRadius: 8, padding: "8px 12px",
+    color: "#fff", fontSize: "0.85rem",
   },
   stats: {
     display: "grid", gridTemplateColumns: "1fr 1fr 1fr",
