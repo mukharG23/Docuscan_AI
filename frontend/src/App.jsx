@@ -17,14 +17,14 @@ export default function App() {
   const [showHistory, setShowHistory] = useState(false)
 
   const fetchStats = () => {
-    fetch("http://localhost:8000/stats")
+    fetch(`${import.meta.env.VITE_API_URL}/stats`)
       .then(r => r.json())
       .then(data => setStats(data))
       .catch(() => {})
   }
 
   const fetchDocuments = () => {
-    fetch("http://localhost:8000/documents")
+    fetch(`${import.meta.env.VITE_API_URL}/documents`)
       .then(r => r.json())
       .then(data => setDocuments(data))
       .catch(() => {})
@@ -59,12 +59,12 @@ export default function App() {
     try {
       const fd = new FormData()
       fd.append("file", file)
-      const response = await fetch("http://localhost:8000/upload", { method: "POST", body: fd })
+      const response = await fetch(`${import.meta.env.VITE_API_URL}/upload`, { method: "POST", body: fd })
       const data = await response.json()
       if (response.ok) {
         toast.success(`Uploaded: ${data.filename}`)
         setDocId(data.id)
-        const processedRes = await fetch(`http://localhost:8000/processed/${data.id}`)
+        const processedRes = await fetch(`${import.meta.env.VITE_API_URL}/processed/${data.id}`)
         const blob = await processedRes.blob()
         setProcessedUrl(URL.createObjectURL(blob))
         fetchStats()
@@ -83,7 +83,7 @@ export default function App() {
     if (!docId) return
     setExtracting(true)
     try {
-      const res = await fetch(`http://localhost:8000/structure/${docId}`, { method: "POST" })
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/structure/${docId}`, { method: "POST" })
       const data = await res.json()
       if (res.ok) {
         setFormData(data.structured_data)
@@ -102,7 +102,7 @@ export default function App() {
 
   const handleDelete = async (id) => {
     try {
-      const res = await fetch(`http://localhost:8000/documents/${id}`, { method: "DELETE" })
+      const res = await fetch(`${import.meta.env.VITE_API_URL}/documents/${id}`, { method: "DELETE" })
       if (res.ok) {
         toast.success("Document deleted")
         fetchStats()
