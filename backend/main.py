@@ -36,12 +36,25 @@ async def upload_document(
     file: UploadFile = File(...),
     db: Session = Depends(get_db)
 ):
+    content = await file.read()
+
+    # size check — reject files under 50KB
+    if len(content) < 50 * 1024:
+        raise HTTPException(status_code=400, detail="Image too small. Minimum size is 50KB for reliable OCR.")
+
+    # resolution check
+    import io
+    from PIL import Image
+    img = Image.open(io.BytesIO(content))
+    width, height = img.size
+    if width < 300 or height < 300:
+        raise HTTPException(status_code=400, detail=f"Image resolution too low ({width}x{height}). Minimum is 300x300 pixels.")
+
     ext = os.path.splitext(file.filename)[1]
     unique_filename = f"{uuid.uuid4()}{ext}"
     filepath = os.path.join(UPLOAD_DIR, unique_filename)
 
     with open(filepath, "wb") as f:
-        content = await file.read()
         f.write(content)
 
     doc = Document(
@@ -99,3 +112,37 @@ def structure_document(doc_id: int, db: Session = Depends(get_db)):
     db.refresh(extraction)
 
     return {"doc_id": doc_id, "structured_data": structured}
+
+@app.get("/stats")
+def get_stats(db: Session = Depends(get_db)):
+    upload_count = db.query(Document).count()
+    extraction_count = db.query(Extraction).count()
+    return {
+        "uploaded": upload_count,
+        "processed": upload_count,  # every upload gets processed
+        "extracted": extraction_count
+    }
+
+@app.get("/documents")
+def get_documents(db: Session = Depends(get_db)):
+    docs = db.query(Document).order_by(Document.uploaded_at.desc()).all()
+    result = []
+    for doc in docs:
+        extraction = db.query(Extraction).filter(Extraction.doc_id == doc.id).first()
+        result.append({
+            "id": doc.id,
+            "filename": doc.filename,
+            "uploaded_at": doc.uploaded_at,
+            "extracted": extraction is not None
+        })
+    return result
+
+@app.delete("/documents/{doc_id}")
+def delete_document(doc_id: int, db: Session = Depends(get_db)):
+    doc = db.query(Document).filter(Document.id == doc_id).first()
+    if not doc:
+        raise HTTPException(status_code=404, detail="Document not found")
+    db.query(Extraction).filter(Extraction.doc_id == doc_id).delete()
+    db.delete(doc)
+    db.commit()
+    return {"message": "Deleted"}
