@@ -39,15 +39,15 @@ async def upload_document(
     content = await file.read()
 
     # size check — reject files under 50KB
-    if len(content) < 50 * 1024:
-        raise HTTPException(status_code=400, detail="Image too small. Minimum size is 50KB for reliable OCR.")
+    if len(content) < 10 * 1024:
+        raise HTTPException(status_code=400, detail="Image too small. Minimum size is 10KB for reliable OCR.")
 
     # resolution check
     import io
     from PIL import Image
     img = Image.open(io.BytesIO(content))
     width, height = img.size
-    if width < 300 or height < 300:
+    if width < 300 and height < 300:
         raise HTTPException(status_code=400, detail=f"Image resolution too low ({width}x{height}). Minimum is 300x300 pixels.")
 
     ext = os.path.splitext(file.filename)[1]
