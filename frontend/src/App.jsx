@@ -1,6 +1,6 @@
 import { useCallback, useState, useEffect } from "react"
 import { useDropzone } from "react-dropzone"
-import { Toaster, toast } from "react-hot-toast"
+import { Toaster, resolveValue, toast } from "react-hot-toast"
 
 export default function App() {
   const [preview, setPreview] = useState(null)
@@ -15,6 +15,7 @@ export default function App() {
   const [stats, setStats] = useState({ uploaded: 0, processed: 0, extracted: 0 })
   const [documents, setDocuments] = useState([])
   const [showHistory, setShowHistory] = useState(false)
+  const [rawText, setRawText] = useState(null)
 
   const fetchStats = () => {
     fetch(`${import.meta.env.VITE_API_URL}/stats`)
@@ -79,26 +80,47 @@ export default function App() {
     }
   }
 
-  const handleExtract = async () => {
-    if (!docId) return
-    setExtracting(true)
-    try {
-      const res = await fetch(`${import.meta.env.VITE_API_URL}/structure/${docId}`, { method: "POST" })
-      const data = await res.json()
-      if (res.ok) {
-        setFormData(data.structured_data)
-        toast.success("Document structured!")
-        fetchStats()
-        fetchDocuments()
-      } else {
-        toast.error("Extraction failed")
+  const handleOCR = async () => {
+  if (!docId) return
+  setExtracting(true)
+  setRawText(null)
+  setFormData(null)
+  try {
+    const res = await fetch(`${import.meta.env.VITE_API_URL}/extract/${docId}`, { method: "POST" })
+    const data = await res.json()
+    if (res.ok) {
+      setRawText(data.raw_text)
+      toast("Text extracted — click Structure to process with Groq", { icon: "🔍" })
+    } else {
+      toast.error("OCR failed")
+        }
+      } catch {
+        toast.error("Cannot reach server")
+      } finally {
+        setExtracting(false)
       }
-    } catch {
-      toast.error("Cannot reach server")
-    } finally {
-      setExtracting(false)
     }
-  }
+
+    const handleStructure = async () => {
+      if (!docId) return
+      setExtracting(true)
+      try {
+        const res = await fetch(`${import.meta.env.VITE_API_URL}/structure/${docId}`, { method: "POST" })
+        const data = await res.json()
+        if (res.ok) {
+          setFormData(data.structured_data)
+          toast.success("Document structured!")
+          fetchStats()
+          fetchDocuments()
+        } else {
+          toast.error("Structuring failed")
+        }
+      } catch {
+        toast.error("Cannot reach server")
+      } finally {
+        setExtracting(false)
+      }
+    }
 
   const handleDelete = async (id) => {
     try {
@@ -344,21 +366,47 @@ export default function App() {
                     ) : docId ? "✓ Uploaded" : "Upload & Process"}
                   </button>
 
-                  {docId && !formData && (
+                  {docId && !rawText && (
                     <button
                       className="btn-hover"
-                      onClick={handleExtract}
+                      onClick={handleOCR}
                       disabled={extracting}
                       style={{ ...s.btnSecondary, opacity: extracting ? 0.5 : 1 }}
                     >
                       {extracting ? (
                         <><span style={s.spinner} /> Extracting...</>
-                      ) : "Extract & Structure →"}
+                      ) : "Extract Text →"}
                     </button>
                   )}
+
+                  {rawText && !formData && (
+                    <button
+                      className="btn-hover"
+                      onClick={handleStructure}
+                      disabled={extracting}
+                      style={{ ...s.btnSecondary, opacity: extracting ? 0.5 : 1 }}
+                      >
+                      {extracting ?(
+                        <><span style={s.spinner} /> Structuring...</>
+                      ) : "Structure with Groq →"}
+                      </button>
+                    )}
                 </div>
 
                 {/* Extracted form */}
+                {rawText && (
+                  <>
+                    <div style={s.divider}/>
+                    <div style={s.formHeader}>
+                      <div>
+                        <div style={s.formTitle}>Raw OCR Output</div>
+                        <div style={s.formSub}>EasyOCR extracted text — processing with Groq...</div>
+                      </div>
+                      <span style={s.docTypeBadge}>Step 1 / 2</span>
+                    </div>
+                    <pre style={s.rawText}>{rawText}</pre>
+                  </>
+                )}
                 {formData && (
                   <>
                     <div style={s.divider} />
@@ -380,7 +428,7 @@ export default function App() {
                             <input
                               className="form-input"
                               style={s.fieldInput}
-                              value={value ?? ""}
+                              value={typeof value === 'object' && value !== null ? JSON.stringify(value) : (value ?? "")}
                               onChange={e => handleFieldChange(key, e.target.value)}
                             />
                           </div>
@@ -830,5 +878,15 @@ const s = {
   footer: {
     color: "rgba(255,255,255,0.15)", fontSize: "0.72rem",
     marginTop: 40, zIndex: 1,
+  },
+  rawText:{
+    background: "rgba(255,255,255,0.02)",
+    border: "1px solid rgba(255,255,255,0.06)",
+    borderRadius: 10, padding: "14px 16px",
+    color: "rgba(255,255,255,0.5)",
+    fontSize: "0.75rem", lineHeight: 1.7,
+    whiteSpace: "pre-wrap", wordBreak: "break-word",
+    fontFamily: "monospace",
+    maxHeight: 200, overflowY: "auto",
   },
 }
